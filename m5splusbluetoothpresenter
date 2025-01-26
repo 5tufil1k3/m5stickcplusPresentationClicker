@@ -1,0 +1,107 @@
+#include <M5StickCPlus.h>  // For M5StickC Plus
+#include <BleKeyboard.h>   // ESP32 BLE Keyboard library
+
+// Create the BLE keyboard object
+BleKeyboard bleKeyboard("M5StickCPlus Presenter", "M5Stack", 100);
+
+// Time (ms) to display the arrow
+const uint32_t ARROW_DISPLAY_TIME = 1000;
+
+// Track arrow display status
+bool arrowShowing = false;
+uint32_t arrowShownTime = 0;
+
+// Track BT connection status to update screen only when it changes
+bool lastBtConnected = false;
+
+/**
+ * Show or update the "BT" text in the top-left corner.
+ * - Red when disconnected
+ * - Blue when connected
+ */
+void showBtSymbol(bool connected) {
+  // Clear the text area for "BT" (a small rectangle top-left)
+  M5.Lcd.fillRect(0, 0, 50, 20, BLACK);
+
+  M5.Lcd.setCursor(0, 0);
+  M5.Lcd.setTextSize(2);
+
+  if (connected) {
+    M5.Lcd.setTextColor(BLUE, BLACK); 
+  } else {
+    M5.Lcd.setTextColor(RED, BLACK);  
+  }
+  M5.Lcd.print("BT");
+}
+
+/**
+ * Display an arrow (e.g. "->" or "<-") in the center of the screen
+ * for ARROW_DISPLAY_TIME milliseconds.
+ */
+void showArrow(const char *arrowText) {
+  // Clear out the center portion of the screen (so we don't overwrite "BT")
+  // M5StickC Plus resolution is 240x135 (wide x high) in default orientation
+  M5.Lcd.fillRect(0, 30, 240, 105, BLACK);
+
+  // Position roughly in the center
+  M5.Lcd.setCursor(50, 60);
+  M5.Lcd.setTextSize(3);
+  M5.Lcd.setTextColor(WHITE, BLACK);
+  M5.Lcd.print(arrowText);
+
+  arrowShowing = true;
+  arrowShownTime = millis();
+}
+
+void setup() {
+  Serial.begin(115200);
+
+  // Initialize M5StickC Plus
+  M5.begin();
+  M5.Lcd.fillScreen(BLACK);
+
+  // Start BLE keyboard
+  bleKeyboard.begin();
+
+  // Initially show "BT" as disconnected (red)
+  showBtSymbol(false);
+}
+
+void loop() {
+  M5.update();
+
+  // Check current BT connection state
+  bool isConnected = bleKeyboard.isConnected();
+
+  // If connection status changed, update the "BT" text color
+  if (isConnected != lastBtConnected) {
+    lastBtConnected = isConnected;
+    showBtSymbol(isConnected);
+  }
+
+  // If connected, respond to button presses
+  if (isConnected) {
+    // Button A => Next slide (Page Down)
+    if (M5.BtnA.wasPressed()) {
+      bleKeyboard.write(KEY_PAGE_DOWN);
+      Serial.println("Next Slide (Page Down)");
+      showArrow("->");
+    }
+
+    // Button B => Previous slide (Page Up)
+    if (M5.BtnB.wasPressed()) {
+      bleKeyboard.write(KEY_PAGE_UP);
+      Serial.println("Previous Slide (Page Up)");
+      showArrow("<-");
+    }
+  }
+
+  // If an arrow is currently showing, check if we should clear it
+  if (arrowShowing && (millis() - arrowShownTime >= ARROW_DISPLAY_TIME)) {
+    // Clear the center portion again, leaving "BT" at the top
+    M5.Lcd.fillRect(0, 30, 240, 105, BLACK);
+    arrowShowing = false;
+  }
+
+  delay(20);
+}
